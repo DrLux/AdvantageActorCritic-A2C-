@@ -6,8 +6,8 @@ from tensorflow.contrib.layers import fully_connected
 class build_network(object):
     
     def __init__(self,obs_dim,ac_dim,discrete):
-        learning_rate = 0.02
-        critic_mini_batch_size = 32
+        learning_rate = 5e-3
+        critic_mini_batch_size = 64
         critic_layers = 2
         self.discrete = discrete
         n_layers = 2
@@ -83,7 +83,7 @@ class build_network(object):
         # Equivalent to `with self.sess:`
         self.sess.__enter__() 
         
-        # Once that sess.run finish it's execution nothing in memory keep lives except for the variables. So we need to reinitialize them 
+        ## Once that sess.run finish it's execution nothing in memory keep lives except for the variables. So we need to reinitialize them 
         tf.global_variables_initializer().run() 
         
         
