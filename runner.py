@@ -38,15 +38,15 @@ def create_env(name_env, wrapped):
 def main():
         ### Set Hyperparameters
         batch_dim = 1000
-        iterations = 30
-        discount_factor = 1
+        iterations = 100
+        discount_factor = 0.999
         name_env = 'CartPole-v0'
 
         # Indicate the treshold to reach in order to consider the task solved (https://github.com/openai/gym/wiki/Leaderboard)
         open_ai_baseline = 195 
 
         #different_nsteps = [100, 20, 1, 10, 50]
-        different_nsteps = [2]
+        different_nsteps = [1]
         #batch_rews = [1]
         n_sim = 1
 
@@ -80,7 +80,7 @@ def main():
                         rewards_per_episode[ns] += agent.sum_eps_rwd[0:iterations]
         env.close()
         rewards_per_episode /= n_sim
-        plot_results(rewards_per_episode,different_nsteps,batch_dim)
+        #plot_results(rewards_per_episode,different_nsteps,batch_dim)
 
 if __name__ == "__main__":
     main()

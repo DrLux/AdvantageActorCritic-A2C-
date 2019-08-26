@@ -65,13 +65,18 @@ class create_agent(object):
 
             # Continue until we finish to filling the cumulative vectors. 
             # In the initial case cumulative_index is equal to episode_step but only because we are in the initial step
-            while cumulative_index <= episode_step or episode_step == 0:
+            while cumulative_index <= episode_step:
 
-                # If the episode is not finished keep step forward
+                # If the episode is not finished and you have other steps available keep going
                 if not done and episode_step < self.env.spec.max_episode_steps:
                     batch_states.append(ob)
                     act = self.network.get_action(ob.reshape(1, -1))
+                    #print(" episode_step: ", episode_step)
+                    #print("Obs: ", ob)
                     ob,rw,done,_ = self.env.step(act)
+                    #print("reward: ", rw)
+                    #print("new_obs: ", ob)
+                    #print(" end iteration ")
                     total_ep_rew += rw
                     batch_actions.append(act)
                     episode_rew.append(rw)
@@ -93,8 +98,10 @@ class create_agent(object):
                     assert cumulative_index+step_to_cumulate <= episode_step, "cumulative_index+step_to_cumulate IS NOT <= episode_step"
                     cumulative_rewards.append(np.dot(episode_rew[cumulative_index:cumulative_index+step_to_cumulate+1], cumulative_gamma))
                     
-                    # Calculate the Cumulative n-step_next State
-                    cumulative_next_states.append(batch_states[episode_step])
+                    # Calculate the Cumulative n-step_next State ---> ATTENZIONE
+                    # Lui qui ritorna ad inizio batch a ripescare i primi stati sempre del primo episodio
+                    #quindi aggiungo batch_steps che triene conto di quanti step ho fatto in totale finora
+                    cumulative_next_states.append(batch_states[batch_steps+episode_step])
 
                     # We construct the vector of gammas raised to the n (we multiply these vectors after we estimates the next_states values)
                     if step_to_cumulate > 0:
@@ -116,6 +123,7 @@ class create_agent(object):
 
         batch = [cumulative_rewards,batch_states,batch_actions,cumulative_next_states,discount_cum_next_states]
         assert len(batch_states) == len(batch_actions) == len(cumulative_rewards) == len(cumulative_next_states) == len(discount_cum_next_states), "Problem with batch size in sample batch "
+        print("Batch len: ", len(batch[0]))
         return batch
     
 
@@ -135,17 +143,21 @@ class create_agent(object):
 
         # Join togheter the obs from all episodes in the batch
         _,batch_obs,_,_,_0 = batch
-        
-        for i in range(num_target_updates * num_grad_steps_per_target_update):
+
+        #####
+        self.network.update_critic(batch_obs,qtarget)
+        ####
+
+        #for i in range(num_target_updates * num_grad_steps_per_target_update):
         
             # Regress onto targets to update value function by taking a few gradient steps
-            self.network.update_critic(batch_obs,qtarget)
+            #self.network.update_critic(batch_obs,qtarget)
         
             # Every num_grad_steps_per_target_update steps, recompute the target values
-            if i % num_grad_steps_per_target_update == 0: 
+            #if i % num_grad_steps_per_target_update == 0: 
         
                 # Update targets with current value function    
-                qtarget,_ = self.process_batch(batch,adv_request=False)
+                #qtarget,_ = self.process_batch(batch,adv_request=False)
         
     def update_actor(self,batch,adv):
         _,_,batch_acts,_,_ = batch
@@ -180,6 +192,16 @@ class create_agent(object):
     def train(self, max_iterations):
         open_ai_solve_condition = False
         itr = 0
+
+        ###################################
+        #cumulative_rewards,batch_states,batch_actions,cumulative_next_states,discount_cum_next_states = self.sample_batch()
+        #print("cumulative_rewards: ", cumulative_rewards)
+        #print("batch_states: ", batch_states)
+        #print("batch_actions: ", batch_actions)
+        #print("cumulative_next_states: ", cumulative_next_states)
+        #print("discount_cum_next_states: ", discount_cum_next_states)
+ 
+        
         while itr <= max_iterations and not open_ai_solve_condition:   
             #print("init train")         
             # Collect a Batch of data = [obs,acts,rewards,next_obs]
@@ -201,3 +223,4 @@ class create_agent(object):
 
             itr += 1
             print("Iteration: ", itr)
+        
