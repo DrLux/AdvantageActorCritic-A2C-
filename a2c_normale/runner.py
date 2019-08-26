@@ -38,7 +38,7 @@ def create_env(name_env, wrapped):
 def main():
         ### Set Hyperparameters
         batch_dim = 1000
-        iterations = 30
+        iterations = 100
         discount_factor = 1
         name_env = 'CartPole-v0'
 
@@ -46,7 +46,7 @@ def main():
         open_ai_baseline = 195 
 
         #different_nsteps = [100, 20, 1, 10, 50]
-        different_nsteps = [2]
+        different_nsteps = [1]
         #batch_rews = [1]
         n_sim = 1
 
