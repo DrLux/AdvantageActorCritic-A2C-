@@ -19,17 +19,12 @@ class create_agent(object):
     def reset(self):
         self.sum_eps_rwd = []
         self.count_episodes = 0
-
-    def get_average_rewards(self, batch_dim):
-        average_rew = np.mean(self.sum_eps_rwd[-100:])
-        print("Mean Rewards: ", average_rew, "Episode: ", self.count_episodes, "Num of episodes in batch: ", batch_dim)
-        return average_rew
-
-    
+  
     def set_nsteps(self,new_nstep):
         #print("new_nstep: ", new_nstep)
         self.n_steps = new_nstep
 
+    #####
     # Collect a batch experience usefull to calculate QTarget and Advantage
     # We precalculate cumulative rewards and cumulative next state target to accellerate the batch_process via vectorialization
     #####
@@ -49,81 +44,81 @@ class create_agent(object):
         batch_actions = []
         cumulative_next_states = []
         discount_cum_next_states = []
-        step_to_cumulate = 0
-        while batch_steps <= self.batch_dim:         
-            
+        
+        while batch_steps <= self.batch_dim: 
+           
             # Collect all episode rewards. It's usefull to calculate cumulative rewards and it is resetted at each episode
             episode_rew  = [] 
 
+            # Counter of step executed in the env 
+            episode_step = 0
+            
             # Counter of steps that have received their cumulative reward
             cumulative_index = 0
             
             ob = self.env.reset()
-            episode_step = 0
+            batch_states.append(ob)
             total_ep_rew = 0
-            done = False
+            ep_done = False
+   
+            # Even when the episode will be termineted we must wait for the remain cumulative vectors. 
+            # At the beginning cumulative_index is equal to episode_step but the ep_done condition is False
+            while not ep_done or episode_step > cumulative_index: 
 
-            # Continue until we finish to filling the cumulative vectors. 
-            # In the initial case cumulative_index is equal to episode_step but only because we are in the initial step
-            while cumulative_index <= episode_step:
-
-                # If the episode is not finished and you have other steps available keep going
-                if not done and episode_step < self.env.spec.max_episode_steps:
-                    batch_states.append(ob)
+                # If the episode is finished do not take new action
+                if not ep_done and episode_step < self.env.spec.max_episode_steps:
                     act = self.network.get_action(ob.reshape(1, -1))
-                    #print(" episode_step: ", episode_step)
-                    #print("Obs: ", ob)
-                    ob,rw,done,_ = self.env.step(act)
-                    #print("reward: ", rw)
-                    #print("new_obs: ", ob)
-                    #print(" end iteration ")
+                    ob,rw,ep_done,_ = self.env.step(act)
+                    batch_states.append(ob)
                     total_ep_rew += rw
                     batch_actions.append(act)
                     episode_rew.append(rw)
+                    episode_step += 1
 
-                # Count the number of steps I have to go back to redistribute the reward without overwriting observations that have already been calculated 
-                step_to_cumulate = min(self.n_steps,episode_step-cumulative_index) 
                 
-                # When excecute enough step start to cumulate rewards
-                if episode_step >= self.n_steps:
+                # When excecuted enough steps, or the episode is done (n.steps > episode length), start to cumulate rewards
+                if episode_step >= self.n_steps or ep_done: 
+
+                    # Counts the number of steps to take in backward to redistribute the reward without overwriting observations that have already been calculated 
+                    step_to_cumulate = episode_step-cumulative_index 
+                    assert step_to_cumulate >=  0, "step_to_cumulate cannot be negative"
                     
-                    # vectorize the cumulative reward loop
-                    cumulative_gamma = np.full(step_to_cumulate+1, self.discount)
+                    # Vectorize the cumulative reward loop
+                    cumulative_gamma = np.full(step_to_cumulate, self.discount)
                     
-                    # The exponents of gamma are go from 0 to step_to_cumulate
-                    exp_gamma = np.arange(step_to_cumulate+1)
+                    # The exponents of gamma go from 0 to step_to_cumulate
+                    exp_gamma = np.arange(step_to_cumulate)
                     cumulative_gamma = cumulative_gamma ** exp_gamma
 
-                    # Calculate the Cumulative Discounted Reward 
+                    # Calculate the Cumulative Discounted Reward
+                    # Take the cumulative rewards (from cumulative_index to episode_step) and multiply by gamma
+                    cumulative_rewards.append(np.dot(episode_rew[cumulative_index:episode_step], cumulative_gamma))
                     assert cumulative_index+step_to_cumulate <= episode_step, "cumulative_index+step_to_cumulate IS NOT <= episode_step"
-                    cumulative_rewards.append(np.dot(episode_rew[cumulative_index:cumulative_index+step_to_cumulate+1], cumulative_gamma))
                     
-                    # Calculate the Cumulative n-step_next State ---> ATTENZIONE
-                    # Lui qui ritorna ad inizio batch a ripescare i primi stati sempre del primo episodio
-                    #quindi aggiungo batch_steps che triene conto di quanti step ho fatto in totale finora
+                    # Save information about the state after "n_step" steps
                     cumulative_next_states.append(batch_states[batch_steps+episode_step])
 
-                    # We construct the vector of gammas raised to the n (we multiply these vectors after we estimates the next_states values)
+                    # We construct the vector of gammas raised to the n (we will multiply these vectors after we estimates the next_states values)
                     if step_to_cumulate > 0:
                         discount_cum_next_states.append(self.discount ** step_to_cumulate)
                     else:
-                    # If this is the very last step there is no next_state. So we eliminate this value by multiply it with a gamma = 0
+                    # If this is the very last step there is no next_state. So we eliminate that value by multiply it with a gamma = 0
                         discount_cum_next_states.append(0)
                     
-                    cumulative_index += 1 
+                    cumulative_index += 1                       
 
-                if not done and episode_step < self.env.spec.max_episode_steps:
-                    episode_step += 1
 
-            #end of episode
+            # Every time en episode finish
+            # Remove the last obs in the obs vector. We need (state,action) tuples but the last state don't have a corrisponded action.
+            # We save it during the episode because we need it for the next_state vector  
+            del batch_states[-1] 
             self.env.close()
             batch_steps += episode_step
             self.count_episodes+= 1
             self.sum_eps_rwd.append(total_ep_rew)
 
         batch = [cumulative_rewards,batch_states,batch_actions,cumulative_next_states,discount_cum_next_states]
-        assert len(batch_states) == len(batch_actions) == len(cumulative_rewards) == len(cumulative_next_states) == len(discount_cum_next_states), "Problem with batch size in sample batch "
-        print("Batch len: ", len(batch[0]))
+        assert len(batch_states) == len(batch_actions) == len(cumulative_rewards) == len(cumulative_next_states) == len(discount_cum_next_states), "Problem with the batch's element size in sample batch function."
         return batch
     
 
@@ -136,28 +131,26 @@ class create_agent(object):
             batch: the batch of data collect with the current policy. We need this to update the qtarget
             qtarget: the qtarget calculated for all episode in batch. shape(1, batch_dim) -> da verificare 
         """
-        
-        # These value shuld be hyperparameters
-        num_grad_steps_per_target_update = 10
-        num_target_updates = 10
+        # How much I want to exploit the current target network
+        num_grad_steps_per_target_update = 5
 
-        # Join togheter the obs from all episodes in the batch
+        # How many steps I do before change (update) the target network 
+        num_target_updates = 5
+
+        # Extract the observations from the batch
         _,batch_obs,_,_,_0 = batch
 
-        #####
-        self.network.update_critic(batch_obs,qtarget)
-        ####
-
-        #for i in range(num_target_updates * num_grad_steps_per_target_update):
+        for i in range(num_target_updates * num_grad_steps_per_target_update):
         
             # Regress onto targets to update value function by taking a few gradient steps
-            #self.network.update_critic(batch_obs,qtarget)
+            self.network.update_critic(batch_obs,qtarget)
         
             # Every num_grad_steps_per_target_update steps, recompute the target values
-            #if i % num_grad_steps_per_target_update == 0: 
+            if i % num_grad_steps_per_target_update == 0: 
         
                 # Update targets with current value function    
-                #qtarget,_ = self.process_batch(batch,adv_request=False)
+                qtarget,_ = self.process_batch(batch,adv_request=False)
+        
         
     def update_actor(self,batch,adv):
         _,_,batch_acts,_,_ = batch
@@ -188,39 +181,30 @@ class create_agent(object):
 
    
             
-        
-    def train(self, max_iterations):
+    # The main function.
+    def train(self, max_iterations,stop_condition):
         open_ai_solve_condition = False
         itr = 0
 
-        ###################################
-        #cumulative_rewards,batch_states,batch_actions,cumulative_next_states,discount_cum_next_states = self.sample_batch()
-        #print("cumulative_rewards: ", cumulative_rewards)
-        #print("batch_states: ", batch_states)
-        #print("batch_actions: ", batch_actions)
-        #print("cumulative_next_states: ", cumulative_next_states)
-        #print("discount_cum_next_states: ", discount_cum_next_states)
- 
-        
         while itr <= max_iterations and not open_ai_solve_condition:   
-            #print("init train")         
             # Collect a Batch of data = [obs,acts,rewards,next_obs]
             batch = self.sample_batch() 
-            #print("collected batch")
-
+            
             # Calculates Qtarget (to update critic) and Adv (to update actor)
             QTarget,Adv = self.process_batch(batch) 
-            #print("processed batch")
-
+            
             self.update_critics(batch,QTarget)
-            #print("update critic")
-
+            
             self.update_actor(batch,Adv)
-            #print("updata actor")
+
+            # Average the reward of the last 100 episodes
+            average_reward_per_iteration = np.mean(self.sum_eps_rwd[-100:])
+            print("Mean Rewards: ", average_reward_per_iteration, " | Episode: ", self.count_episodes)        
             
             # Test if the env is already solved
-            open_ai_condition = self.get_average_rewards(len(batch)) >= open_ai_solve_condition
+            open_ai_solve_condition = average_reward_per_iteration >= stop_condition
 
             itr += 1
             print("Iteration: ", itr)
+        
         

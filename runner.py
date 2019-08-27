@@ -6,7 +6,6 @@ from gym.wrappers import Monitor
 import matplotlib.pyplot as plt
 
 ### To DO
-# - fare una singola prova seria (parametri ed env di berkeley) con nsteps = 1 e simulazioni = 1
 # - aggiungere un limite di steps
 # - aggiungere la funzione di creazioen dell' env che mi fa scegliere se renderizzare o registrare
 # - aggiungere il supporto a tensorboard 
@@ -45,9 +44,9 @@ def main():
         # Indicate the treshold to reach in order to consider the task solved (https://github.com/openai/gym/wiki/Leaderboard)
         open_ai_baseline = 195 
 
-        #different_nsteps = [100, 20, 1, 10, 50]
-        different_nsteps = [1]
-        #batch_rews = [1]
+        # Try a renge of different N-Steps = [100, 20, 1, 10, 50]
+        different_nsteps = [10,100]
+        
         n_sim = 1
 
         ## Initialize Variables
@@ -76,11 +75,11 @@ def main():
                         agent.reset()
                         
                         # *Core function* 
-                        agent.train(iterations)
-                        rewards_per_episode[ns] += agent.sum_eps_rwd[0:iterations]
+                        agent.train(iterations, open_ai_baseline)
+                        rewards_per_episode[ns] += agent.get_average_rewards()
         env.close()
         rewards_per_episode /= n_sim
-        #plot_results(rewards_per_episode,different_nsteps,batch_dim)
+        plot_results(rewards_per_episode,different_nsteps,batch_dim)
 
 if __name__ == "__main__":
     main()
