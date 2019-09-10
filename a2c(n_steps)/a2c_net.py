@@ -21,9 +21,9 @@ class build_network(object):
             self.sy_ac_na = tf.placeholder(shape=[None, ac_dim], name="ac", dtype=tf.float32) #mean and std
         self.sy_adv_n = tf.placeholder(shape=[None], name="adv_n", dtype=tf.float32)        
 
-        ###########
-        # Actor
-        ###########
+        #########
+        # Actor #
+        #########
 
         #define policy forward pass
         if self.discrete:
